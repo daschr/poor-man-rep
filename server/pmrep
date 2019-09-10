@@ -36,7 +36,10 @@ main(){
 	db="$(jq -r ".db_path" < "$1")"
 	port="$(jq -r ".port" < "$1")"
 	addr="$(jq -r ".addr" < "$1")"
-			
+
+	export REP_DATABASE="$db"
+
+	exec $(command -v ncat) -l $port -k --sh-exec $(readlink -f $callback) 
 }
 
 main $*
