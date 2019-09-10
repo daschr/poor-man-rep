@@ -1,0 +1,49 @@
+#!/bin/bash
+
+check_deps(){
+	deps=("sqlite3")
+
+	for dep in "${deps[@]}"; do 
+		if ! command -v "$dep" >/dev/null; then
+			echo "missing \"$dep\", cannot continue" >&2;
+			exit 2
+		fi
+	done
+}
+
+init_db(){
+	[ -z "$1" ] && { echo "[0] internal error, bad programmer detected" >&2; exit 1; }
+	
+	[ -e "$1" ] && rm -rf "$1" #well, not my prob
+	
+	cat <<EOF | sqlite3 "$1"
+		CREATE TABLE orig_wlan(id number PRIMARY KEY, bssid TEXT NOT NULL, ssid TEXT NOT NULL, UNIQUE (bssid,ssid)  );
+		CREATE TABLE devices(mac TEXT PRIMARY KEY, room NUMBER NOT NULL, running_ap NUMBER NOT NULL, rep_ap number, FOREIGN KEY(rep_ap) REFERENCES orig_wlan(id));
+EOF
+}
+
+
+main(){
+	if [ $UID = 0 -a "$1" != "--feel-risky" ]; then
+		printf "why do you run this as root?!\nif you really want to, do $0 --feel-risky [blah]\n" >&2
+		exit 1
+	fi
+	
+	case "$1" in
+		--help|-h|-?|?|-help)
+			echo "Usage: $0 [db (standard=data.db)]"
+			exit 1
+		;;
+	esac
+	
+	[ "$1" = "--feel-risky" ] && shift
+
+	check_deps
+
+	db="${1:-data.db}" # © very creative name
+
+	init_db "$db"
+	echo "created database at \"$db\""
+}
+
+main $*
