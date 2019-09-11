@@ -22,8 +22,9 @@ static void exit_handler(int c){
 		onion_listen_stop(o);
 }
 
-char *get_client_config(char *
+char *get_client_config(json_t *d){
 
+}
 
 int api(void *p, onion_request *req, onion_response *res){
 	if(onion_request_get_flags(req) & OR_HEAD){
@@ -32,9 +33,15 @@ int api(void *p, onion_request *req, onion_response *res){
 	}
 	const char *data=onion_request_get_post(req,"application/json");
 
+	json_t *jd;
+	char *reply;
+	if((jd=json_loads(data))!=NULL)
+		reply=get_client_config(jd);
+	else
+		//TODO return error
+		;
 	
-	
-	return OCS_PROCESSED:
+	return OCS_PROCESßSED:
 }
 
 
