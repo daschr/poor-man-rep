@@ -55,15 +55,16 @@ int cb_empty(void *v,int i, char **a, char **b){
 	return 0;
 }
 
-/*
-int8_t enable_client_wlan(char *mac){
-
+int8_t enable_client_wlan(const char *mac){
+	printf("pseudoenabling with mac: %s\n",mac);
+	return 1;
 }
 
-int8_t disable_client_wlan(char *mac){
-
+int8_t disable_client_wlan(const char *mac){
+	printf("pseudodisabling with mac: %s\n",mac);
+	return 1;
 }
-*/
+
 static void api(struct mg_connection *c, int ev, void *p){
 	if(ev == MG_EV_HTTP_REQUEST){
 		struct http_message *mes=(struct http_message*) p;
@@ -75,22 +76,49 @@ static void api(struct mg_connection *c, int ev, void *p){
 				printf("[DBG] body:\n %.*s\n",mes->body.len,mes->body.p);
 			#endif
 			char body[mes->body.len+1];
-			char *mac;
+			const char *mac;
 			body[mes->body.len]=0;
 			strncpy(body,mes->body.p,mes->body.len);
-			json_t *js_body, js_tmp;
+			json_t *js_body, *js_tmp1, *js_tmp2;
 			
+
+			//little bit ugly but it works, also no lust for refactoring
 			if((js_body=json_loads(body,0,NULL)) != NULL){
-				if(json_is_object(js_body) && (js_tmp=obect_get(js_body,"mac"))!=NULL){
-					if(json_is_string(js_tmp) && json_string_length(js_tmp)==17){ // 17 = length of mac address
-						mac=jsson_string_value(js_tmp);
+				if(json_is_object(js_body) && (js_tmp1=json_object_get(js_body,"mac"))!=NULL){
+					if(json_is_string(js_tmp1) && json_string_length(js_tmp1)==17){ // 17 = length of mac address
+						mac=json_string_value(js_tmp1);
+						if((js_tmp2=json_object_get(js_body,"login")) != NULL){
+							if(json_is_boolean(js_tmp2)){
+								if(json_is_true(js_tmp2)){
+									if(enable_client_wlan(mac)){
+										json_t *repl=json_pack("{ssss}","ssid",app.ssid,"password",app.password);
+										const char *repl_s=json_dumps(repl,0);
+										mg_send_head(c,200,strlen(repl_s),"Content-Type: application/json");
+										mg_printf(c,"%s",repl_s);
+										json_decref(repl);
+									}else	
+										web_blame(c,400,"error\n");
+								}else{
+									if(disable_client_wlan(mac))
+										web_blame(c,200,"ok\n");
+									else
+										web_blame(c,400,"error\n");
+								}
+								json_decref(js_tmp2);
+							}else
+								web_blame(c,400,"invalid field \"login\"!\n");
+						}else
+							web_blame(c,400,"could not find field \"login\"!\n");
+					
+						json_decref(js_tmp1);
+						json_decref(js_tmp2);
 					}else
-						web_blame("invalid field \"mac\"!\n");
+						web_blame(c,400,"invalid field \"mac\"!\n");
 				}else
-					web_blame("could not find field \"mac\"!\n");
+					web_blame(c,400,"could not find field \"mac\"!\n");
 				
 				
-				json_decref(js);
+				json_decref(js_body);
 			}else
 				web_blame(c,400,"unable to parse data as json!\n");
 			
