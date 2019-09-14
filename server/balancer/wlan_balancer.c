@@ -11,13 +11,21 @@ const char *help_message="Usage: wlan_balancer [cmd]\n"\
 	"\trun [port] [database] [ssid] [password]\n"\
 	"\tinit [database]\n";
 
-const char *db_init_sqlcmds[]={ "CREATE TABLE orig_wlan(id number PRIMARY KEY, bssid TEXT NOT NULL, "\
+const char *db_init_sqlcmds[]={ "CREATE TABLE device(mac TEXT PRIMARY KEY, room NUMBER NOT NULL, "\
+				"running_ap NUMBER NOT NULL);" };
+/*
+				"CREATE TABLE orig_wlan(id number PRIMARY KEY, bssid TEXT NOT NULL, "\
 				"ssid TEXT NOT NULL, UNIQUE (bssid,ssid)  );",
 				"CREATE TABLE devices(mac TEXT PRIMARY KEY, room NUMBER NOT NULL, "\
 				"running_ap NUMBER NOT NULL, rep_ap number, FOREIGN KEY(rep_ap) "\
 				"REFERENCES orig_wlan(id));" };
+*/
 
 const char *webserver_text="WLAN load balancer";
+
+#define SQL_CLIENT_EXISTS     "SELECT running_ap FROM device WHERE mac LIKE \"%s\";"
+#define SQL_ENABLING_ALLOWED  "select mac from device where room=(SELECT room from device where mac LIKE \"%s\") and running_ap=1 and mac NOT LIKE \"%s\";"
+#define SQL_UPDATE_CLIENT     "UPDATE device SET running_ap=%d WHERE mac LIKE \"%s\";"
 
 struct app_s {
 	char *ssid;
@@ -51,18 +59,75 @@ void web_blame(struct mg_connection *c,unsigned int httpc,char *s){
 	
 }
 
-int cb_empty(void *v,int i, char **a, char **b){
+int cb_empty(void *v, int i, char **a, char **b){
+	return 0;
+}
+
+int cb_count(void *c, int i, char **a, char **b){
+	size_t *v= (size_t *) c;
+	++(*v);
 	return 0;
 }
 
 int8_t enable_client_wlan(const char *mac){
+	char s[256], *emsg=NULL;
+	size_t row_counter;
 	printf("pseudoenabling with mac: %s\n",mac);
-	return 1;
+	if(sprintf(s,SQL_CLIENT_EXISTS,mac) <0)
+		return 0;
+	int rc=sqlite3_exec(app.db_con,s,cb_count,(void *) &row_counter,&emsg);
+	#ifdef DEBUG
+		puts(s);
+	#endif
+	if(rc != SQLITE_OK || row_counter == 0){ // host does not exist in db
+		if(emsg!=NULL) sqlite3_free(emsg);
+		#ifdef DEBUG
+			puts("host does not exist in db");
+		#endif
+		return 0;
+	}
+	row_counter=0;
+	if(sprintf(s,SQL_ENABLING_ALLOWED,mac,mac) <0)
+		return 0;
+	#ifdef DEBUG
+		puts(s);
+	#endif
+	rc=sqlite3_exec(app.db_con,s,cb_count,(void *) &row_counter,&emsg);
+	if(rc != SQLITE_OK || row_counter != 0){ // some host in the same room already runs as access point
+		if(emsg!=NULL) sqlite3_free(emsg);
+		#ifdef DEBUG
+			puts("some host in the same room already runs as access point");
+		#endif
+		return 0;
+	}
+	#ifdef DEBUG
+		puts("enabling");
+	#endif
+	if(sprintf(s,SQL_UPDATE_CLIENT,1,mac) <0)
+		return 0;
+	rc=sqlite3_exec(app.db_con,s,cb_empty,NULL,&emsg);
+	if(emsg != NULL){
+		printf("%s\n",emsg);
+		sqlite3_free(emsg);
+	}
+	printf("pseudodisabling with mac: %s\n",mac);
+	return rc == SQLITE_OK ? 1 : 0;
 }
 
 int8_t disable_client_wlan(const char *mac){
+	char s[256], *emsg=NULL;
+	if(sprintf(s,SQL_UPDATE_CLIENT,0,mac) <0)
+		return 0;
+	#ifdef DEBUG
+		puts(s);
+	#endif
+	int rc=sqlite3_exec(app.db_con,s,cb_empty,NULL,&emsg);
+	if(emsg != NULL){
+		printf("%s\n",emsg);
+		sqlite3_free(emsg);
+	}
 	printf("pseudodisabling with mac: %s\n",mac);
-	return 1;
+	return rc == SQLITE_OK ? 1 : 0;
 }
 
 static void api(struct mg_connection *c, int ev, void *p){
@@ -154,7 +219,7 @@ int main(int ac, char **as){
 			#ifdef DEBUG
 				printf("[DBG] %s\n",db_init_sqlcmds[cmd]);
 			#endif
-			if(ec){
+			if(ec!=SQLITE_OK){
 				fprintf(stderr,"Error: \"%s\"",emsg);
 				sqlite3_free(emsg);
 			}
@@ -167,7 +232,7 @@ int main(int ac, char **as){
 			blame(help_message);
 		if(access(as[1],F_OK) == -1)
 			blame("\"%s\" does not exist, will not continue!",as[1]);
-		int ec=sqlite3_open(*as,&(app.db_con));
+		int ec=sqlite3_open(as[1],&(app.db_con));
 		if(ec)
 			blame("unable  to open db: \"%s\"",sqlite3_errmsg(app.db_con));
 		
