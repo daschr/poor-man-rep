@@ -5,13 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
-/*	prog [cmd]
-		run [port] [database]
-		init [database]
-
-
-
-*/
+#include <string.h>
 
 const char *help_message="Usage: wlan_balancer [cmd]\n"\
 	"\trun [port] [database] [ssid] [password]\n"\
@@ -23,6 +17,8 @@ const char *db_init_sqlcmds[]={ "CREATE TABLE orig_wlan(id number PRIMARY KEY, b
 				"running_ap NUMBER NOT NULL, rep_ap number, FOREIGN KEY(rep_ap) "\
 				"REFERENCES orig_wlan(id));" };
 
+const char *webserver_text="WLAN load balancer";
+
 struct app_s {
 	char *ssid;
 	char *password;
@@ -33,7 +29,7 @@ struct app_s {
 void exit_handler(int i){
 	if(app.db_con!=NULL)
 		sqlite3_close(app.db_con);
-	mg_mgr_free(&(app.mgr));
+//	mg_mgr_free(&(app.mgr));
 }
 
 void blame (const char* msg, ...){
@@ -49,17 +45,60 @@ void blame (const char* msg, ...){
         exit(EXIT_FAILURE);
 }
 
+void web_blame(struct mg_connection *c,unsigned int httpc,char *s){
+	mg_send_head(c,httpc,strlen(s),"Content-Type: text/plain");
+	mg_printf(c,s);
+	
+}
+
 int cb_empty(void *v,int i, char **a, char **b){
 	return 0;
 }
 
 /*
-const char *get_client_config(json_t *d){
+int8_t enable_client_wlan(char *mac){
+
+}
+
+int8_t disable_client_wlan(char *mac){
 
 }
 */
 static void api(struct mg_connection *c, int ev, void *p){
-		
+	if(ev == MG_EV_HTTP_REQUEST){
+		struct http_message *mes=(struct http_message*) p;
+		#ifdef DEBUG
+			printf("[DBG] method: %.*s\n",mes->method.len,mes->method.p);
+		#endif
+		if(strncmp(mes->method.p,"POST",mes->method.len)==0){
+			#ifdef DEBUG
+				printf("[DBG] body:\n %.*s\n",mes->body.len,mes->body.p);
+			#endif
+			char body[mes->body.len+1];
+			char *mac;
+			body[mes->body.len]=0;
+			strncpy(body,mes->body.p,mes->body.len);
+			json_t *js_body, js_tmp;
+			
+			if((js_body=json_loads(body,0,NULL)) != NULL){
+				if(json_is_object(js_body) && (js_tmp=obect_get(js_body,"mac"))!=NULL){
+					if(json_is_string(js_tmp) && json_string_length(js_tmp)==17){ // 17 = length of mac address
+						mac=jsson_string_value(js_tmp);
+					}else
+						web_blame("invalid field \"mac\"!\n");
+				}else
+					web_blame("could not find field \"mac\"!\n");
+				
+				
+				json_decref(js);
+			}else
+				web_blame(c,400,"unable to parse data as json!\n");
+			
+		}else{
+			mg_send_head(c,200,strlen(webserver_text),"Content-Type: text/plain");
+			mg_printf(c,"%s",webserver_text);
+		}
+	}		
 }
 
 
@@ -98,8 +137,8 @@ int main(int ac, char **as){
 		++as;
 		if(ac != 6)
 			blame(help_message);
-		if(access(as[1],F_OK) != -1)
-			blame("\"%s\" does exist, will not continue!",as[1]);
+		if(access(as[1],F_OK) == -1)
+			blame("\"%s\" does not exist, will not continue!",as[1]);
 		int ec=sqlite3_open(*as,&(app.db_con));
 		if(ec)
 			blame("unable  to open db: \"%s\"",sqlite3_errmsg(app.db_con));
