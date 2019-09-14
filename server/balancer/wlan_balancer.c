@@ -23,11 +23,6 @@ const char *db_init_sqlcmds[]={ "CREATE TABLE orig_wlan(id number PRIMARY KEY, b
 				"running_ap NUMBER NOT NULL, rep_ap number, FOREIGN KEY(rep_ap) "\
 				"REFERENCES orig_wlan(id));" };
 
-
-
-
-//holds manager, nedded for gc
-
 struct app_s {
 	char *ssid;
 	char *password;
@@ -38,6 +33,7 @@ struct app_s {
 void exit_handler(int i){
 	if(app.db_con!=NULL)
 		sqlite3_close(app.db_con);
+	mg_mgr_free(&(app.mgr));
 }
 
 void blame (const char* msg, ...){
@@ -61,11 +57,10 @@ int cb_empty(void *v,int i, char **a, char **b){
 const char *get_client_config(json_t *d){
 
 }
-
-int api(void *p, onion_request *req, onion_response *res){
+*/
+static void api(struct mg_connection *c, int ev, void *p){
 		
 }
-*/
 
 
 int main(int ac, char **as){
@@ -101,6 +96,28 @@ int main(int ac, char **as){
 		puts("finished!");
 	}else if(strcmp(*as,"run")==0){
 		++as;
+		if(ac != 6)
+			blame(help_message);
+		if(access(as[1],F_OK) != -1)
+			blame("\"%s\" does exist, will not continue!",as[1]);
+		int ec=sqlite3_open(*as,&(app.db_con));
+		if(ec)
+			blame("unable  to open db: \"%s\"",sqlite3_errmsg(app.db_con));
+		
+		struct mg_connection *c;
+		
+		mg_mgr_init(&(app.mgr),NULL);
+		c= mg_bind(&(app.mgr),*as,api);
+		mg_set_protocol_http_websocket(c);
+		
+		app.ssid=as[2];
+		app.password=as[3];
+		
+		for(;;)
+			mg_mgr_poll(&(app.mgr),1000);
+		
+		mg_mgr_free(&(app.mgr));
+		sqlite3_close(app.db_con);
 	}else
 		blame(help_message);
 
