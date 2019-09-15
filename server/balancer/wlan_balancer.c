@@ -13,13 +13,6 @@ const char *help_message="Usage: wlan_balancer [cmd]\n"\
 
 const char *db_init_sqlcmds[]={ "CREATE TABLE device(mac TEXT PRIMARY KEY, room NUMBER NOT NULL, "\
 				"running_ap NUMBER NOT NULL);" };
-/*
-				"CREATE TABLE orig_wlan(id number PRIMARY KEY, bssid TEXT NOT NULL, "\
-				"ssid TEXT NOT NULL, UNIQUE (bssid,ssid)  );",
-				"CREATE TABLE devices(mac TEXT PRIMARY KEY, room NUMBER NOT NULL, "\
-				"running_ap NUMBER NOT NULL, rep_ap number, FOREIGN KEY(rep_ap) "\
-				"REFERENCES orig_wlan(id));" };
-*/
 
 const char *webserver_text="WLAN load balancer";
 
@@ -72,17 +65,16 @@ int cb_count(void *c, int i, char **a, char **b){
 int8_t enable_client_wlan(const char *mac){
 	char s[256], *emsg=NULL;
 	size_t row_counter;
-	printf("pseudoenabling with mac: %s\n",mac);
 	if(sprintf(s,SQL_CLIENT_EXISTS,mac) <0)
 		return 0;
 	int rc=sqlite3_exec(app.db_con,s,cb_count,(void *) &row_counter,&emsg);
 	#ifdef DEBUG
 		puts(s);
 	#endif
-	if(rc != SQLITE_OK || row_counter == 0){ // host does not exist in db
+	if(rc != SQLITE_OK || row_counter == 0){
 		if(emsg!=NULL) sqlite3_free(emsg);
 		#ifdef DEBUG
-			puts("host does not exist in db");
+			puts("[DBG] host does not exist in db");
 		#endif
 		return 0;
 	}
@@ -93,25 +85,27 @@ int8_t enable_client_wlan(const char *mac){
 		puts(s);
 	#endif
 	rc=sqlite3_exec(app.db_con,s,cb_count,(void *) &row_counter,&emsg);
-	if(rc != SQLITE_OK || row_counter != 0){ // some host in the same room already runs as access point
+	if(rc != SQLITE_OK || row_counter != 0){
 		if(emsg!=NULL) sqlite3_free(emsg);
 		#ifdef DEBUG
-			puts("some host in the same room already runs as access point");
+			puts("[DBG] some host in the same room already runs as access point");
 		#endif
 		return 0;
 	}
-	#ifdef DEBUG
-		puts("enabling");
-	#endif
 	if(sprintf(s,SQL_UPDATE_CLIENT,1,mac) <0)
 		return 0;
+	#ifdef DEBUG
+		puts(s);
+	#endif
 	rc=sqlite3_exec(app.db_con,s,cb_empty,NULL,&emsg);
 	if(emsg != NULL){
-		printf("%s\n",emsg);
+		printf("[DBG] SQL error: %s\n",emsg);
 		sqlite3_free(emsg);
 	}
-	printf("pseudodisabling with mac: %s\n",mac);
-	return rc == SQLITE_OK ? 1 : 0;
+	#ifdef DEBUG
+		printf("[DBG] enabling with mac: %s\n",mac);
+	#endif
+	return rc == SQLITE_OK;
 }
 
 int8_t disable_client_wlan(const char *mac){
@@ -123,11 +117,13 @@ int8_t disable_client_wlan(const char *mac){
 	#endif
 	int rc=sqlite3_exec(app.db_con,s,cb_empty,NULL,&emsg);
 	if(emsg != NULL){
-		printf("%s\n",emsg);
+		printf("[DBG] SQL error: %s\n",emsg);
 		sqlite3_free(emsg);
 	}
-	printf("pseudodisabling with mac: %s\n",mac);
-	return rc == SQLITE_OK ? 1 : 0;
+	#ifdef DEBUG
+		printf("[DBG] disabling with mac: %s\n",mac);
+	#endif
+	return rc == SQLITE_OK;
 }
 
 static void api(struct mg_connection *c, int ev, void *p){
@@ -144,7 +140,7 @@ static void api(struct mg_connection *c, int ev, void *p){
 			const char *mac;
 			body[mes->body.len]=0;
 			strncpy(body,mes->body.p,mes->body.len);
-			json_t *js_body, *js_tmp1, *js_tmp2;
+			json_t *js_body=NULL,*js_tmp1=NULL,*js_tmp2=NULL;
 			
 
 			//little bit ugly but it works, also no lust for refactoring
