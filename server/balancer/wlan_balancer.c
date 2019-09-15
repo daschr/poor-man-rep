@@ -14,7 +14,7 @@ const char *help_message="Usage: wlan_balancer [cmd]\n"\
 const char *db_init_sqlcmds[]={ "CREATE TABLE device(mac TEXT PRIMARY KEY, room NUMBER NOT NULL, "\
 				"running_ap NUMBER NOT NULL);" };
 
-const char *webserver_text="WLAN load balancer";
+const char *webserver_text="WLAN load balancer\n";
 
 #define SQL_CLIENT_EXISTS     "SELECT running_ap FROM device WHERE mac LIKE \"%s\";"
 #define SQL_ENABLING_ALLOWED  "select mac from device where room=(SELECT room from device where mac LIKE \"%s\") and running_ap=1 and mac NOT LIKE \"%s\";"
