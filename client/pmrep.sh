@@ -61,7 +61,7 @@ main(){
 
 	echo "ok, I will now start create_ap :)"
 	
-	create_ap -m bridge $wlan_dev vlan$vlan_id $ssid $password
+	create_ap --country DE -c $(( $RANDOM % 13 +1 )) -m bridge $wlan_dev vlan$vlan_id $ssid $password
 	
 	curl -s -d"{\"mac\":\"$mac\",\"login\":false}" "$wlan_balancer" >/dev/null
 	ip l del vlan$vlan_id
