@@ -48,7 +48,7 @@ void blame (const char* msg, ...){
 
 void web_blame(struct mg_connection *c,unsigned int httpc,char *s){
 	mg_send_head(c,httpc,strlen(s),"Content-Type: text/plain");
-	mg_printf(c,s);
+	mg_printf(c,"%s",s);
 	
 }
 
