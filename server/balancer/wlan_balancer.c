@@ -64,7 +64,7 @@ int cb_count(void *c, int i, char **a, char **b){
 
 int8_t enable_client_wlan(const char *mac){
 	char s[256], *emsg=NULL;
-	size_t row_counter;
+	size_t row_counter=0;
 	if(sprintf(s,SQL_CLIENT_EXISTS,mac) <0)
 		return 0;
 	int rc=sqlite3_exec(app.db_con,s,cb_count,(void *) &row_counter,&emsg);
